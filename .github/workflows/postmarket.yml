@@ -1,0 +1,40 @@
+name: Postmarket Email
+
+on:
+  schedule:
+    # 每天在兩個可能的 UTC 時間都跑一次，DST 時會其中一次命中 5pm ET
+    - cron: "0 21 * * 1-5"  # Mon-Fri 21:00 UTC
+    - cron: "0 22 * * 1-5"  # Mon-Fri 22:00 UTC
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run report
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          # Optional tuning
+          ALLOW_EMOJI: "true"
+          MAX_SCAN: "1000"
+          TOP_SET_N: "100"
+          THRESHOLD_TOP: "3.0"
+          THRESHOLD_OTHERS: "8.0"
+        run: |
+          python postmarket_report.py
