@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-GitHub Actions-ready premarket email agent (free runner)
+GitHub Actions-ready postmarket email agent (free runner)
 Key points:
 - Reads secrets from ENV (GITHUB Actions secrets)
 - Guards to only run at 17:00 US/Eastern on weekdays
@@ -305,18 +305,21 @@ def fetch_movers(
     return winners, losers
 
 
-def fetch_earnings_today_best_effort(tickers: List[str], max_scan: int = 1000) -> List[str]:
+def fetch_earnings_best_effort(
+    tickers: List[str],
+    target_date,
+    max_scan: int = 1000
+) -> List[str]:
     """
     Earnings calendar via yfinance per ticker is inconsistent & slow.
-    This is best-effort and limited to avoid runtime blowups.
+    Best-effort. target_date is a datetime.date you want to match.
     """
-    today = now_est().date()
     out: List[str] = []
 
     scanned = 0
     for symbol in tickers:
         scanned += 1
-        
+
         if scanned % 50 == 0:
             ascii_log("EARNINGS_SCAN_PROGRESS", scanned)
 
@@ -328,11 +331,9 @@ def fetch_earnings_today_best_effort(tickers: List[str], max_scan: int = 1000) -
         try:
             tk = yf.Ticker(symbol)
             cal = tk.calendar
-            # Many tickers won't have it
             if cal is None:
                 continue
 
-            # Handle common calendar formats
             target = None
             if isinstance(cal, dict):
                 v = cal.get("Earnings Date") or cal.get("EarningsDate")
@@ -341,7 +342,6 @@ def fetch_earnings_today_best_effort(tickers: List[str], max_scan: int = 1000) -
                 else:
                     target = v
             else:
-                # DataFrame-ish
                 try:
                     if hasattr(cal, "loc") and "Earnings Date" in getattr(cal, "index", []):
                         target = cal.loc["Earnings Date"].iloc[0]
@@ -353,17 +353,15 @@ def fetch_earnings_today_best_effort(tickers: List[str], max_scan: int = 1000) -
             if target is None:
                 continue
 
-            # Convert to date
             if hasattr(target, "date"):
                 target = target.date()
 
-            if target == today:
+            if target == target_date:
                 out.append(symbol)
 
         except Exception:
             continue
 
-    # unique, keep order
     seen = set()
     uniq = []
     for s in out:
@@ -371,19 +369,18 @@ def fetch_earnings_today_best_effort(tickers: List[str], max_scan: int = 1000) -
             seen.add(s)
             uniq.append(s)
 
-    ascii_log(
-        "EARNINGS_SCAN_DONE",
-        "scanned=", scanned,
-        "found=", len(uniq)
-    )        
-    
+    ascii_log("EARNINGS_SCAN_DONE", "scanned=", scanned, "found=", len(uniq))
     return uniq
+
+def next_trading_day(d):
+    # Mon=0 ... Fri=4
+    return d + timedelta(days=3) if d.weekday() == 4 else d + timedelta(days=1)
 
 
 # =======================
 # AI report
 # =======================
-def get_ai_report(model, earnings: List[str], winners: List[Dict], losers: List[Dict]) -> str:
+def get_ai_report(model, earnings: List[str], winners: List[Dict], losers: List[Dict], target_date) -> str:
     """
     Earnings timing (pre-market vs after-hours) is not reliably available from yfinance.
     Therefore, we list all companies reporting earnings today without assigning a time label.
@@ -392,7 +389,7 @@ def get_ai_report(model, earnings: List[str], winners: List[Dict], losers: List[
 
     prompt = f"""
 你是專業美股分析師，負責撰寫給投資研究主管的每日美股盤後晚報。
-現在時間為美東時間下午 5:00，請根據以下已提供的結構化資料，生成一份專業、精煉、格式完全一致的盤前早報。
+現在時間為美東時間下午 5:00(收盤後)，請根據以下已提供的結構化資料，生成一份專業、精煉、格式完全一致的盤前早報。
 
 已提供資料：
 明日預計公布財報公司：{earnings_today}
@@ -409,13 +406,13 @@ def get_ai_report(model, earnings: List[str], winners: List[Dict], losers: List[
 僅輸出內容本身，不要任何前言或結語，輸出格式為 HTML（不含 <html> 或 <body> 標籤）
 HTML 使用規範：
 僅可使用以下 HTML 標籤：
-<h2>、<h3>、<b>、<br>
+<h1>、<h2>、<h3>、<b>、<br>
 不得使用 style、class、font、span、div、css
 不得在句子中插入 HTML 標籤
 
 結構與格式要求（必須完全一致，不可調整順序或名稱）：
 <h1>{now_est().strftime('%Y-%m-%d')} 美股盤後市場報告"</h1>
-<h2>🗓️明日預計公布財報公司</h2>
+<h2>🗓️下交易日（{target_date.strftime('%Y-%m-%d')}）預計公布財報公司</h2>
 公司英文全部名稱 + (Ticker)<br>
 公司英文全部名稱 + (Ticker)<br>
 公司英文全部名稱 + (Ticker)<br>
@@ -550,7 +547,7 @@ def main():
 
     # Guard (important for GitHub cron UTC vs ET & DST)
 #    if not should_run_now():
-#        ascii_log("SKIP: Not 09:00 ET weekday. Now(ET)=", now_est().isoformat())
+#        ascii_log("SKIP: Not 17:00 ET weekday. Now(ET)=", now_est().isoformat())
 #        return
 
     ascii_log("Job started (ET):", now_est().isoformat())
@@ -563,7 +560,12 @@ def main():
     winners, losers = fetch_movers(sp500, top_set, max_scan=MAX_SCAN)
 
     # 3) earnings today (best effort, also limited)
-    earnings_today = fetch_earnings_today_best_effort(sp500, max_scan=min(1000, MAX_SCAN))
+    target_date = next_trading_day(now_est().date())
+    earnings_next_day = fetch_earnings_best_effort(
+        sp500,
+        target_date=target_date,
+        max_scan=min(1000, MAX_SCAN)
+    )
 
     # 4) gemini
     genai.configure(api_key=GEMINI_API_KEY)
@@ -572,7 +574,7 @@ def main():
     model = genai.GenerativeModel(model_name)
 
     ascii_log("Generating report...")
-    report = get_ai_report(model, earnings_today, winners, losers)
+    report = get_ai_report(model, earnings_next_day, winners, losers, target_date)
 
     # 5) send
     ok = send_email(report)
