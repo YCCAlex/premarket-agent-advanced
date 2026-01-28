@@ -44,7 +44,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "").strip()
 MAX_SCAN = int(os.getenv("MAX_SCAN", "1000"))  # default: scan first 150 S&P500 tickers
 # Thresholds
 THRESHOLD_TOP = float(os.getenv("THRESHOLD_TOP", "3.0"))      # % for top set
-THRESHOLD_OTHERS = float(os.getenv("THRESHOLD_OTHERS", "8.0")) # % for others
+THRESHOLD_OTHERS = float(os.getenv("THRESHOLD_OTHERS", "3.0")) # % for others
 # Top set definition (first N in slickcharts table)
 TOP_SET_N = int(os.getenv("TOP_SET_N", "100"))
 
