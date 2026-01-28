@@ -241,19 +241,24 @@ def compute_postmarket_move_from_hist(hist: pd.DataFrame, now_et: datetime) -> T
         h.index = h.index.tz_localize("UTC")
     h = h.tz_convert("America/New_York")
 
-    # Regular session close (baseline)
+    # Regular session close (baseline) — anchor to the same date as now_et
+    target_date = now_et.date()
+
     reg = h.between_time("09:30", "16:00")
+    reg = reg[reg.index.date == target_date]
+
     if reg.empty:
-        raise ValueError("no regular session bars")
+        raise ValueError(f"no regular session bars for {target_date}")
+
     close_4pm = float(reg["Close"].iloc[-1])
+
 
     # Post-market (avoid 16:00 close-auction noise)
     post = h.between_time("16:01", "20:00")
     post = post[post.index <= now_et]
 
-    # Optional: filter out zero-volume prints (safer)
-    if "Volume" in post.columns:
-        post = post[post["Volume"] > 0]
+    # IMPORTANT: yfinance often reports Volume=0 in extended hours even when prices update.
+    # Do NOT filter by Volume here, or post-market may become empty -> falsely returns 0% move.
 
     if post.empty:
         return close_4pm, close_4pm, 0.0
@@ -293,7 +298,7 @@ def fetch_movers(
             tk = yf.Ticker(symbol)
 
             # 1m prepost; can be heavy, so keep it best-effort
-            hist = tk.history(period="1d", interval="1m", prepost=True)
+            hist = tk.history(period="2d", interval="1m", prepost=True)
             if hist is None or hist.empty:
                 continue
 
@@ -448,7 +453,7 @@ HTML 使用規範：
 
 結構與格式要求（必須完全一致，不可調整順序或名稱）：
 <h1>{now_est().strftime('%Y-%m-%d')} 美股盤後市場報告"</h1>
-<h2>🗓️下交易日預計公布財報公司</h2>
+<h2>🗓️下交易日({target_date.strftime('%Y-%m-%d')})預計公布財報公司</h2>
 公司英文全部名稱 + (Ticker)<br> #不要連續兩個ticker
 公司英文全部名稱 + (Ticker)<br> #不要連續兩個ticker
 公司英文全部名稱 + (Ticker)<br> #不要連續兩個ticker
@@ -505,7 +510,7 @@ HTML 使用規範：
 <br>
 
 補充規則：
-市場概覽與關注焦點以總體為優先，若資料不足，才可補充與盤後波動相關的個股事件，盡量不要重複盤後強勢股/疲弱股的內容
+市場概覽與關注焦點以總體為優先，若資料不足，才可補充與盤前波動相關的個股事件，盡量不要重複盤前強勢股/疲弱股的內容
 不提供投資建議、不使用情緒性或判斷性語言
 若某一欄位資料不足，仍需保留該欄位與編號，不可刪除段落
 只輸出最終晚報內容，不要解釋、不自我評論。
