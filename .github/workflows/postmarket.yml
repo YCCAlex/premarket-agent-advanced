@@ -3,8 +3,8 @@ name: Postmarket Email
 on:
   schedule:
     # 每天在兩個可能的 UTC 時間都跑一次，DST 時會其中一次命中 5pm ET
-    - cron: "0 21 * * 1-5"  # Mon-Fri 21:00 UTC
-    - cron: "0 22 * * 1-5"  # Mon-Fri 22:00 UTC
+    - cron: "30 22 * * 1-5"  # 18:30 ET (EDT)
+    - cron: "30 23 * * 1-5"  # 18:30 ET (EST)
   workflow_dispatch:
 
 jobs:
