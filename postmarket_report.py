@@ -453,7 +453,7 @@ HTML 使用規範：
 
 結構與格式要求（必須完全一致，不可調整順序或名稱）：
 <h1>{now_est().strftime('%Y-%m-%d')} 美股盤後市場報告"</h1>
-<h2>🗓️下交易日({target_date.strftime('%Y-%m-%d')})預計公布財報公司</h2>
+<h2>🗓️下交易日預計公布財報公司</h2>
 公司英文全部名稱 + (Ticker)<br> #不要連續兩個ticker
 公司英文全部名稱 + (Ticker)<br> #不要連續兩個ticker
 公司英文全部名稱 + (Ticker)<br> #不要連續兩個ticker
